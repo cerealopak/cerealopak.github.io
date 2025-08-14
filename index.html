@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Log Book Engineering (Final) - WIP Cereal Opak</title>
+    <title>Log Book Engineering (Fitur Baru) - WIP Cereal Opak</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
@@ -92,7 +92,7 @@
         <div class="flex justify-center items-center mb-8">
             <button id="download-excel" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 flex items-center gap-2">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-                Unduh Laporan (Excel)
+                Unduh Laporan per Shift
             </button>
         </div>
 
@@ -118,9 +118,15 @@
                 </div>
                 <div class="mt-4 space-y-4 max-h-[70vh] overflow-y-auto pr-2">
                     <input type="hidden" id="shift" name="shift">
-                    <div>
-                        <label for="technician" class="block text-sm font-medium text-gray-700 mb-1">Nama Teknisi</label>
-                        <input type="text" id="technician" name="technician" required class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Masukkan nama teknisi">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label for="technician" class="block text-sm font-medium text-gray-700 mb-1">Nama Teknisi</label>
+                            <input type="text" id="technician" name="technician" required class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Masukkan nama teknisi">
+                        </div>
+                        <div>
+                            <label for="machineNumber" class="block text-sm font-medium text-gray-700 mb-1">Nomor Mesin</label>
+                            <input type="text" id="machineNumber" name="machineNumber" required class="w-full p-3 bg-gray-50 border border-gray-300 rounded-lg" placeholder="Contoh: M-001">
+                        </div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
@@ -168,7 +174,6 @@
         import { getStorage, ref, uploadString, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
         // --- Konfigurasi dan Inisialisasi Firebase ---
-        // KUNCI DARI PROYEK FIREBASE ANDA SENDIRI
         const firebaseConfig = {
           apiKey: "AIzaSyDaBpUotEAHLydXDxUA_fIQmFeS9eqhhwE",
           authDomain: "log-book-engineering-wip-cerea.firebaseapp.com",
@@ -178,7 +183,6 @@
           appId: "1:23482631888:web:7a8c6431a69dbc960740d5"
         };
 
-        // Variabel appId sekarang diambil dari projectId Anda
         const appId = firebaseConfig.projectId;
 
         const app = initializeApp(firebaseConfig);
@@ -187,10 +191,9 @@
         const storage = getStorage(app);
         
         let currentUserId = null;
-        // Path koleksi sekarang menggunakan appId yang benar
+        let allLogs = []; // Simpan semua log di sini untuk diunduh
         const logsCollectionRef = collection(db, `artifacts/${appId}/public/data/logs`);
 
-        // Sisa kode JavaScript sama persis...
         const logContainer = document.getElementById('log-container');
         const noLogsMessage = document.getElementById('no-logs');
         const downloadButton = document.getElementById('download-excel');
@@ -240,7 +243,10 @@
                             </div>
                             <span class="text-sm font-bold text-gray-700">${log.jobType}</span>
                         </div>
-                        <h4 class="font-semibold text-lg text-gray-800 mb-1">${log.technician}</h4>
+                        <div class="mb-2">
+                            <h4 class="font-semibold text-lg text-gray-800">${log.technician}</h4>
+                            <p class="text-sm text-gray-500">No. Mesin: <span class="font-medium">${log.machineNumber || 'N/A'}</span></p>
+                        </div>
                         <div class="text-xs text-gray-500 mb-3 space-y-1">
                             <div><strong>Mulai:</strong> ${formatDateTime(log.startTime)}</div>
                             <div><strong>Selesai:</strong> ${formatDateTime(log.endTime)}</div>
@@ -272,8 +278,8 @@
                     authStatus.textContent = `Terhubung sebagai: ${currentUserId.substring(0, 10)}...`;
                     const q = query(logsCollectionRef, orderBy("startTime", "desc"));
                     onSnapshot(q, (snapshot) => {
-                        const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        renderLogs(logs);
+                        allLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                        renderLogs(allLogs);
                     }, (error) => console.error("Error listening to logs:", error));
                 } else {
                     authStatus.textContent = 'Tidak terhubung. Mencoba menghubungkan kembali...';
@@ -300,7 +306,9 @@
             const photoFile = formData.get('photo');
             const newLog = {
                 userId: currentUserId, createdAt: new Date().toISOString(), shift: formData.get('shift'),
-                technician: formData.get('technician'), jobType: formData.get('jobType'), status: formData.get('status'),
+                technician: formData.get('technician'),
+                machineNumber: formData.get('machineNumber'), // Data baru
+                jobType: formData.get('jobType'), status: formData.get('status'),
                 startTime: formData.get('startTime'), endTime: formData.get('endTime'), activity: formData.get('activity'),
                 photoURL: null, photoPath: null
             };
@@ -342,28 +350,40 @@
             }
         });
 
-        downloadButton.addEventListener('click', async () => {
-            downloadButton.disabled = true; showToast('Mempersiapkan data unduhan...');
-            try {
-                const querySnapshot = await getDocs(logsCollectionRef);
-                const logs = querySnapshot.docs.map(doc => doc.data());
-                if (logs.length === 0) { showToast('Tidak ada data untuk diunduh.'); return; }
-                logs.sort((a,b) => new Date(b.startTime) - new Date(a.startTime));
-                const dataForExcel = logs.map(log => ({
-                    'Shift': log.shift, 'Nama Teknisi': log.technician, 'Jenis Pekerjaan': log.jobType, 'Status': log.status,
-                    'Waktu Mulai': formatDateTime(log.startTime), 'Waktu Selesai': formatDateTime(log.endTime),
-                    'Deskripsi Kegiatan': log.activity, 'Dibuat Oleh (ID)': log.userId, 'Foto Terlampir': log.photoURL ? 'Ya' : 'Tidak'
-                }));
-                const worksheet = XLSX.utils.json_to_sheet(dataForExcel);
-                const workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(workbook, worksheet, 'Log Engineering');
-                worksheet['!cols'] = [ {wch:15}, {wch:25}, {wch:20}, {wch:20}, {wch:20}, {wch:20}, {wch:70}, {wch:30}, {wch:15} ];
-                XLSX.writeFile(workbook, 'Laporan_Log_Book_Realtime.xlsx');
-            } catch (error) {
-                console.error("Error downloading excel: ", error); showToast('Gagal mengunduh laporan.');
-            } finally {
-                downloadButton.disabled = false;
+        downloadButton.addEventListener('click', () => {
+            if (allLogs.length === 0) {
+                showToast('Tidak ada data untuk diunduh.');
+                return;
             }
+
+            showToast('Mempersiapkan laporan Excel...');
+            
+            const shifts = ['Shift A', 'Shift B', 'Shift C', 'Non Shift'];
+            const workbook = XLSX.utils.book_new();
+
+            shifts.forEach(shiftName => {
+                const shiftLogs = allLogs.filter(log => log.shift === shiftName);
+
+                if (shiftLogs.length > 0) {
+                    const dataForSheet = shiftLogs.map(log => ({
+                        'Nama Teknisi': log.technician,
+                        'Nomor Mesin': log.machineNumber,
+                        'Jenis Pekerjaan': log.jobType,
+                        'Status': log.status,
+                        'Waktu Mulai': formatDateTime(log.startTime),
+                        'Waktu Selesai': formatDateTime(log.endTime),
+                        'Deskripsi Kegiatan': log.activity,
+                        'Foto Terlampir': log.photoURL ? 'Ya' : 'Tidak',
+                        'Dibuat Oleh (ID)': log.userId
+                    }));
+
+                    const worksheet = XLSX.utils.json_to_sheet(dataForSheet);
+                    worksheet['!cols'] = [ {wch:25}, {wch:15}, {wch:20}, {wch:20}, {wch:20}, {wch:20}, {wch:70}, {wch:15}, {wch:30} ];
+                    XLSX.utils.book_append_sheet(workbook, worksheet, shiftName);
+                }
+            });
+
+            XLSX.writeFile(workbook, 'Laporan_Log_Book_Per_Shift.xlsx');
         });
 
         main();
