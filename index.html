@@ -13,7 +13,7 @@
             background-color: #f0f2f5;
             background-image: 
                 linear-gradient(rgba(240, 242, 245, 0.8), rgba(240, 242, 245, 0.8)),
-                url('https://placehold.co/1920x1080/e0e7ff/4f46e5?text=Engineering+Background');
+                url('http://googleusercontent.com/file_content/1');
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
@@ -169,13 +169,21 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, getDocs, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         import { getStorage, ref, uploadString, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
         // --- Konfigurasi dan Inisialisasi Firebase ---
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = {
+          apiKey: "AIzaSyDaBpUotEAHLydXDxUA_fIQmFeS9eqhhwE",
+          authDomain: "log-book-engineering-wip-cerea.firebaseapp.com",
+          projectId: "log-book-engineering-wip-cerea",
+          storageBucket: "log-book-engineering-wip-cerea.appspot.com",
+          messagingSenderId: "23482631888",
+          appId: "1:23482631888:web:7a8c6431a69dbc960740d5"
+        };
+
+        const appId = firebaseConfig.projectId;
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
@@ -183,8 +191,7 @@
         const storage = getStorage(app);
         
         let currentUserId = null;
-        let allLogs = [];
-        
+        let allLogs = []; // Simpan semua log di sini untuk diunduh
         const logsCollectionRef = collection(db, `artifacts/${appId}/public/data/logs`);
 
         const logContainer = document.getElementById('log-container');
@@ -220,12 +227,10 @@
                 downloadButton.classList.remove('opacity-50', 'cursor-not-allowed');
             }
 
-            const sortedLogs = logs.sort((a, b) => new Date(b.startTime) - new Date(a.startTime));
-
-            sortedLogs.forEach(log => {
+            logs.forEach(log => {
                 const logCard = document.createElement('div');
                 logCard.className = 'bg-white rounded-xl shadow-md overflow-hidden flex flex-col';
-                const photoHtml = log.photoURL ? `<img src="${log.photoURL}" alt="Foto Kegiatan" class="w-full h-48 object-cover" onerror="this.style.display='none'"/>` : '';
+                const photoHtml = log.photoURL ? `<img src="${log.photoURL}" alt="Foto Kegiatan" class="w-full h-48 object-cover">` : '';
                 const canDelete = log.userId === currentUserId;
 
                 logCard.innerHTML = `
@@ -271,23 +276,17 @@
                 if (user) {
                     currentUserId = user.uid;
                     authStatus.textContent = `Terhubung sebagai: ${currentUserId.substring(0, 10)}...`;
-                    onSnapshot(logsCollectionRef, (snapshot) => {
+                    const q = query(logsCollectionRef, orderBy("startTime", "desc"));
+                    onSnapshot(q, (snapshot) => {
                         allLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                         renderLogs(allLogs);
                     }, (error) => console.error("Error listening to logs:", error));
                 } else {
-                    currentUserId = null;
                     authStatus.textContent = 'Tidak terhubung. Mencoba menghubungkan kembali...';
-                    renderLogs([]);
                 }
             });
-
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                await signInAnonymously(auth);
             } catch (error) {
                 console.error("Authentication failed:", error);
                 authStatus.textContent = 'Gagal melakukan autentikasi.';
@@ -300,10 +299,6 @@
         
         logForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            if (!currentUserId) {
-                showToast('Koneksi terputus, tidak dapat menyimpan. Silakan muat ulang halaman.');
-                return;
-            }
             const submitButton = e.target.querySelector('button[type="submit"]');
             submitButton.disabled = true;
             submitButton.textContent = 'Menyimpan...';
@@ -312,13 +307,13 @@
             const newLog = {
                 userId: currentUserId, createdAt: new Date().toISOString(), shift: formData.get('shift'),
                 technician: formData.get('technician'),
-                machineNumber: formData.get('machineNumber'),
+                machineNumber: formData.get('machineNumber'), // Data baru
                 jobType: formData.get('jobType'), status: formData.get('status'),
                 startTime: formData.get('startTime'), endTime: formData.get('endTime'), activity: formData.get('activity'),
                 photoURL: null, photoPath: null
             };
-            if (newLog.endTime && newLog.endTime < newLog.startTime) {
-                showToast('Waktu selesai tidak boleh kurang dari waktu mulai.');
+            if (newLog.endTime < newLog.startTime) {
+                alert('Waktu selesai tidak boleh kurang dari waktu mulai.');
                 submitButton.disabled = false; submitButton.textContent = 'Simpan Catatan'; return;
             }
             try {
@@ -343,19 +338,14 @@
             if (e.target.classList.contains('delete-btn')) {
                 const docId = e.target.dataset.id;
                 const photoPath = e.target.dataset.photoPath;
-                
-                try {
-                    await deleteDoc(doc(db, `artifacts/${appId}/public/data/logs`, docId));
-                    if (photoPath) {
-                        try {
-                           await deleteObject(ref(storage, photoPath));
-                        } catch (storageError) {
-                            console.warn("Could not delete photo, it may have already been removed:", storageError);
-                        }
+                if (confirm('Apakah Anda yakin ingin menghapus catatan ini?')) {
+                    try {
+                        await deleteDoc(doc(db, `artifacts/${appId}/public/data/logs`, docId));
+                        if (photoPath) await deleteObject(ref(storage, photoPath));
+                        showToast('Catatan berhasil dihapus.');
+                    } catch (error) {
+                        console.error("Error deleting document: ", error); showToast('Gagal menghapus catatan.');
                     }
-                    showToast('Catatan berhasil dihapus.');
-                } catch (error) {
-                    console.error("Error deleting document: ", error); showToast('Gagal menghapus catatan.');
                 }
             }
         });
@@ -392,14 +382,11 @@
                     XLSX.utils.book_append_sheet(workbook, worksheet, shiftName);
                 }
             });
-            
-            const date = new Date().toISOString().slice(0,10);
-            XLSX.writeFile(workbook, `Laporan_Log_Book_${date}.xlsx`);
+
+            XLSX.writeFile(workbook, 'Laporan_Log_Book_Per_Shift.xlsx');
         });
 
         main();
     </script>
 </body>
 </html>
-
-
